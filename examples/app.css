@@ -1,13 +1,27 @@
+*,body{
+    background: #efefef;
+}
+
 .hidden {
 	display: none;
+}
+
+a{
+    text-decoration: none;
+    font-size: x-large;
+    color: black;
+    padding: 0px 12px;
+}
+a:hover{
+    text-decoration: none;
 }
 
 .video-container {
     background: black;
     display: inline-block;
     line-height: 0;
-    max-width: 100%;
-    width: 100%;
+    max-width: 80%;
+    width: 80%;
 }
 
 #logs-header {

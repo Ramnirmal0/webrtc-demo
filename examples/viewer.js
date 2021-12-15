@@ -3,16 +3,78 @@
  */
 const viewer = {};
 
-async function startViewer(localView, remoteView, formValues, onStatsReport, onRemoteDataMessage) {
+function getCredential(formValues, callback, err) {
+	formValues.region="ap-south-1"
+    if (err)
+        console.log(err);
+    else {
+        var authenticationData = {
+            Username: formValues.username,
+            Password: formValues.password,
+        };
+
+        var authenticationDetails = new AmazonCognitoIdentity.AuthenticationDetails(
+            authenticationData
+        );
+
+        var poolData = {
+            UserPoolId: 'ap-south-1_oe0uP4jmf', // Your user pool id here
+            ClientId: '7b53a0sftcfl42l338hulehuog', // Your client id here
+        };
+        var userPool = new AmazonCognitoIdentity.CognitoUserPool(poolData);
+
+        var userData = {
+            Username: formValues.username,
+            Pool: userPool,
+        };
+        var cognitoUser = new AmazonCognitoIdentity.CognitoUser(userData);
+
+        //console.log(AWS.config.credentials.accessKeyId)
+
+        //this is the call where it throws an error in the first run
+        cognitoUser.authenticateUser(authenticationDetails, {
+            onSuccess: function(result) {
+                var accessToken = result.getAccessToken().getJwtToken();
+
+                //POTENTIAL: Region needs to be set if not already set previously elsewhere.
+                AWS.config.region = formValues.region;
+
+                AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+                    IdentityPoolId: 'ap-south-1:1369912d-894c-4362-ac82-46d0fc70a91a', // your identity pool id here
+                    Logins: {
+                        // Change the key below according to the specific region your user pool is in.
+                        'cognito-idp.ap-south-1.amazonaws.com/ap-south-1_oe0uP4jmf': result
+                            .getIdToken()
+                            .getJwtToken(),
+                    },
+                });
+
+                //refreshes credentials using AWS.CognitoIdentity.getCredentialsForIdentity()
+                AWS.config.credentials.refresh(error => {
+                    if (error) {
+                        console.error(error);
+                    } else  {
+                        // Instantiate aws sdk service objects now that the credentials have been updated.
+                        // example: var s3 = new AWS.S3();
+                        console.log('Successfully logged!');
+                        callback();
+                    }
+                });
+            },
+            onFailure: function(err) {
+                alert(err.message || JSON.stringify(err));
+            },
+        });
+    }
+}
+
+async function postViewerLogin(localView, remoteView, formValues, onStatsReport, onRemoteDataMessage) {
     viewer.localView = localView;
     viewer.remoteView = remoteView;
 
     // Create KVS client
     const kinesisVideoClient = new AWS.KinesisVideo({
         region: formValues.region,
-        accessKeyId: formValues.accessKeyId,
-        secretAccessKey: formValues.secretAccessKey,
-        sessionToken: formValues.sessionToken,
         endpoint: formValues.endpoint,
         correctClockSkew: true,
     });
@@ -44,9 +106,6 @@ async function startViewer(localView, remoteView, formValues, onStatsReport, onR
 
     const kinesisVideoSignalingChannelsClient = new AWS.KinesisVideoSignalingChannels({
         region: formValues.region,
-        accessKeyId: formValues.accessKeyId,
-        secretAccessKey: formValues.secretAccessKey,
-        sessionToken: formValues.sessionToken,
         endpoint: endpointsByProtocol.HTTPS,
         correctClockSkew: true,
     });
@@ -73,6 +132,7 @@ async function startViewer(localView, remoteView, formValues, onStatsReport, onR
     console.log('[VIEWER] ICE servers: ', iceServers);
 
     // Create Signaling Client
+console.log('*****************endpoint', endpointsByProtocol.WSS)
     viewer.signalingClient = new KVSWebRTC.SignalingClient({
         channelARN,
         channelEndpoint: endpointsByProtocol.WSS,
@@ -80,16 +140,15 @@ async function startViewer(localView, remoteView, formValues, onStatsReport, onR
         role: KVSWebRTC.Role.VIEWER,
         region: formValues.region,
         credentials: {
-            accessKeyId: formValues.accessKeyId,
-            secretAccessKey: formValues.secretAccessKey,
-            sessionToken: formValues.sessionToken,
+            accessKeyId: AWS.config.credentials.accessKeyId,
+            secretAccessKey: AWS.config.credentials.secretAccessKey,
+            sessionToken: AWS.config.credentials.sessionToken,
         },
-        systemClockOffset: kinesisVideoClient.config.systemClockOffset,
     });
 
     const resolution = formValues.widescreen ? { width: { ideal: 1280 }, height: { ideal: 720 } } : { width: { ideal: 640 }, height: { ideal: 480 } };
     const constraints = {
-        video: formValues.sendVideo ? resolution : false,
+	video: formValues.sendVideo ? resolution : false,
         audio: formValues.sendAudio,
     };
     const configuration = {
@@ -110,18 +169,14 @@ async function startViewer(localView, remoteView, formValues, onStatsReport, onR
     viewer.signalingClient.on('open', async () => {
         console.log('[VIEWER] Connected to signaling service');
 
-        // Get a stream from the webcam, add it to the peer connection, and display it in the local view.
-        // If no video/audio needed, no need to request for the sources. 
-        // Otherwise, the browser will throw an error saying that either video or audio has to be enabled.
-        if (formValues.sendVideo || formValues.sendAudio) {
-            try {
-                viewer.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-                viewer.localStream.getTracks().forEach(track => viewer.peerConnection.addTrack(track, viewer.localStream));
-                localView.srcObject = viewer.localStream;
-            } catch (e) {
-                console.error('[VIEWER] Could not find webcam');
-                return;
-            }
+        // Get a stream from the webcam, add it to the peer connection, and display it in the local view
+        try {
+ //           viewer.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      //      viewer.localStream.getTracks().forEach(track => viewer.peerConnection.addTrack(track, viewer.localStream));
+        //    localView.srcObject = viewer.localStream;
+        } catch (e) {
+            console.error('[VIEWER] Could not find webcam');
+            return;
         }
 
         // Create an SDP offer to send to the master
@@ -194,6 +249,13 @@ async function startViewer(localView, remoteView, formValues, onStatsReport, onR
 
     console.log('[VIEWER] Starting viewer connection');
     viewer.signalingClient.open();
+
+}
+
+function startViewer(localView, remoteView, formValues, onStatsReport, onRemoteDataMessage) {
+    getCredential(formValues, function(){
+        postViewerLogin(localView, remoteView, formValues, onStatsReport, onRemoteDataMessage)
+    });
 }
 
 function stopViewer() {

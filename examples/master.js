@@ -1,6 +1,7 @@
 /**
  * This file demonstrates the process of starting WebRTC streaming using a KVS Signaling Channel.
  */
+
 const master = {
     signalingClient: null,
     peerConnectionByClientId: {},
@@ -10,16 +11,79 @@ const master = {
     peerConnectionStatsInterval: null,
 };
 
-async function startMaster(localView, remoteView, formValues, onStatsReport, onRemoteDataMessage) {
+function getCredential(formValues, callback, err) {
+	formValues.region="ap-south-1"
+    if (err)
+        console.log(err);
+    else {
+        var authenticationData = {
+            Username: formValues.username,
+            Password: formValues.password,
+        };
+
+        var authenticationDetails = new AmazonCognitoIdentity.AuthenticationDetails(
+            authenticationData
+        );
+
+        var poolData = {
+            UserPoolId: 'ap-south-1_oe0uP4jmf', // Your user pool id here
+            ClientId: '7b53a0sftcfl42l338hulehuog', // Your client id here
+        };
+        var userPool = new AmazonCognitoIdentity.CognitoUserPool(poolData);
+
+        var userData = {
+            Username: formValues.username,
+            Pool: userPool,
+        };
+        var cognitoUser = new AmazonCognitoIdentity.CognitoUser(userData);
+
+        //console.log(AWS.config.credentials.accessKeyId)
+
+        //this is the call where it throws an error in the first run
+        cognitoUser.authenticateUser(authenticationDetails, {
+            onSuccess: function(result) {
+                var accessToken = result.getAccessToken().getJwtToken();
+
+                //POTENTIAL: Region needs to be set if not already set previously elsewhere.
+                AWS.config.region = formValues.region;
+
+                AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+                    IdentityPoolId: 'ap-south-1:1369912d-894c-4362-ac82-46d0fc70a91a', // your identity pool id here
+                    Logins: {
+                        // Change the key below according to the specific region your user pool is in.
+                        'cognito-idp.ap-south-1.amazonaws.com/ap-south-1_oe0uP4jmf': result
+                            .getIdToken()
+                            .getJwtToken(),
+                    },
+                });
+
+                //refreshes credentials using AWS.CognitoIdentity.getCredentialsForIdentity()
+                AWS.config.credentials.refresh(error => {
+                    if (error) {
+                        console.error(error);
+                    } else  {
+                        // Instantiate aws sdk service objects now that the credentials have been updated.
+                        // example: var s3 = new AWS.S3();
+                        console.log('Successfully logged!');
+                        callback();
+                    }
+                });
+            },
+            onFailure: function(err) {
+                alert(err.message || JSON.stringify(err));
+            },
+        });
+    }
+}
+
+async function postMasterLogin(localView, remoteView, formValues, onStatsReport, onRemoteDataMessage){
     master.localView = localView;
     master.remoteView = remoteView;
+
 
     // Create KVS client
     const kinesisVideoClient = new AWS.KinesisVideo({
         region: formValues.region,
-        accessKeyId: formValues.accessKeyId,
-        secretAccessKey: formValues.secretAccessKey,
-        sessionToken: formValues.sessionToken,
         endpoint: formValues.endpoint,
         correctClockSkew: true,
     });
@@ -56,21 +120,18 @@ async function startMaster(localView, remoteView, formValues, onStatsReport, onR
         role: KVSWebRTC.Role.MASTER,
         region: formValues.region,
         credentials: {
-            accessKeyId: formValues.accessKeyId,
-            secretAccessKey: formValues.secretAccessKey,
-            sessionToken: formValues.sessionToken,
+            accessKeyId: AWS.config.credentials.accessKeyId,
+            secretAccessKey: AWS.config.credentials.secretAccessKey,
+            sessionToken: AWS.config.credentials.sessionToken,
         },
-        systemClockOffset: kinesisVideoClient.config.systemClockOffset,
     });
 
     // Get ICE server configuration
     const kinesisVideoSignalingChannelsClient = new AWS.KinesisVideoSignalingChannels({
         region: formValues.region,
-        accessKeyId: formValues.accessKeyId,
-        secretAccessKey: formValues.secretAccessKey,
-        sessionToken: formValues.sessionToken,
         endpoint: endpointsByProtocol.HTTPS,
         correctClockSkew: true,
+
     });
     const getIceServerConfigResponse = await kinesisVideoSignalingChannelsClient
         .getIceServerConfig({
@@ -103,16 +164,12 @@ async function startMaster(localView, remoteView, formValues, onStatsReport, onR
         audio: formValues.sendAudio,
     };
 
-    // Get a stream from the webcam and display it in the local view. 
-    // If no video/audio needed, no need to request for the sources. 
-    // Otherwise, the browser will throw an error saying that either video or audio has to be enabled.
-    if (formValues.sendVideo || formValues.sendAudio) {
-        try {
-            master.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-            localView.srcObject = master.localStream;
-        } catch (e) {
-            console.error('[MASTER] Could not find webcam');
-        }
+    // Get a stream from the webcam and display it in the local view
+    try {
+        master.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        localView.srcObject = master.localStream;
+    } catch (e) {
+        console.error('[MASTER] Could not find webcam');
     }
 
     master.signalingClient.on('open', async () => {
@@ -168,10 +225,7 @@ async function startMaster(localView, remoteView, formValues, onStatsReport, onR
             remoteView.srcObject = event.streams[0];
         });
 
-        // If there's no video/audio, master.localStream will be null. So, we should skip adding the tracks from it.
-        if (master.localStream) {
-            master.localStream.getTracks().forEach(track => peerConnection.addTrack(track, master.localStream));
-        }
+        master.localStream.getTracks().forEach(track => peerConnection.addTrack(track, master.localStream));
         await peerConnection.setRemoteDescription(offer);
 
         // Create an SDP answer to send back to the client
@@ -209,6 +263,12 @@ async function startMaster(localView, remoteView, formValues, onStatsReport, onR
 
     console.log('[MASTER] Starting master connection');
     master.signalingClient.open();
+}
+
+function startMaster(localView, remoteView, formValues, onStatsReport, onRemoteDataMessage) {
+    getCredential(formValues, function(){
+        postMasterLogin(localView, remoteView, formValues, onStatsReport, onRemoteDataMessage)
+    });
 }
 
 function stopMaster() {

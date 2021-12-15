@@ -6,9 +6,6 @@ async function createSignalingChannel(formValues) {
     // Create KVS client
     const kinesisVideoClient = new AWS.KinesisVideo({
         region: formValues.region,
-        accessKeyId: formValues.accessKeyId,
-        secretAccessKey: formValues.secretAccessKey,
-        sessionToken: formValues.sessionToken,
         endpoint: formValues.endpoint,
     });
 

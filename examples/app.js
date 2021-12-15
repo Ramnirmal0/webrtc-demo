@@ -1,5 +1,3 @@
-let ROLE = null; // Possible values: 'master', 'viewer', null
-
 function configureLogging() {
     function log(level, messages) {
         const text = messages
@@ -53,10 +51,9 @@ function getFormValues() {
         useTrickleICE: $('#useTrickleICE').is(':checked'),
         natTraversalDisabled: $('#natTraversalDisabled').is(':checked'),
         forceTURN: $('#forceTURN').is(':checked'),
-        accessKeyId: $('#accessKeyId').val(),
+        username: $('#username').val(),
         endpoint: $('#endpoint').val() || null,
-        secretAccessKey: $('#secretAccessKey').val(),
-        sessionToken: $('#sessionToken').val() || null,
+        password: $('#password').val(),
     };
 }
 
@@ -72,25 +69,6 @@ function onStatsReport(report) {
     // TODO: Publish stats
 }
 
-function onStop() {
-    if (!ROLE) {
-        return;
-    }
-
-    if (ROLE === 'master') {
-        stopMaster();
-        $('#master').addClass('d-none');
-    } else {
-        stopViewer();
-        $('#viewer').addClass('d-none');
-    }
-    
-    $('#form').removeClass('d-none');
-    ROLE = null;
-}
-
-window.addEventListener('beforeunload', onStop);
-
 window.addEventListener('error', function(event) {
     console.error(event.message);
     event.preventDefault();
@@ -104,7 +82,6 @@ window.addEventListener('unhandledrejection', function(event) {
 configureLogging();
 
 $('#master-button').click(async () => {
-    ROLE = 'master';
     $('#form').addClass('d-none');
     $('#master').removeClass('d-none');
 
@@ -123,10 +100,14 @@ $('#master-button').click(async () => {
     });
 });
 
-$('#stop-master-button').click(onStop);
+$('#stop-master-button').click(async () => {
+    stopMaster();
+
+    $('#form').removeClass('d-none');
+    $('#master').addClass('d-none');
+});
 
 $('#viewer-button').click(async () => {
-    ROLE = 'viewer';
     $('#form').addClass('d-none');
     $('#viewer').removeClass('d-none');
 
@@ -145,7 +126,12 @@ $('#viewer-button').click(async () => {
     });
 });
 
-$('#stop-viewer-button').click(onStop);
+$('#stop-viewer-button').click(async () => {
+    stopViewer();
+
+    $('#form').removeClass('d-none');
+    $('#viewer').addClass('d-none');
+});
 
 $('#create-channel-button').click(async () => {
     const formValues = getFormValues();
@@ -169,9 +155,8 @@ const fields = [
     { field: 'channelName', type: 'text' },
     { field: 'clientId', type: 'text' },
     { field: 'region', type: 'text' },
-    { field: 'accessKeyId', type: 'text' },
-    { field: 'secretAccessKey', type: 'text' },
-    { field: 'sessionToken', type: 'text' },
+    { field: 'username', type: 'text' },
+    { field: 'password', type: 'text' },
     { field: 'endpoint', type: 'text' },
     { field: 'sendVideo', type: 'checkbox' },
     { field: 'sendAudio', type: 'checkbox' },

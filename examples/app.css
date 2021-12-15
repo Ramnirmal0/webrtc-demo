@@ -1,3 +1,7 @@
+.hidden {
+	display: none;
+}
+
 .video-container {
     background: black;
     display: inline-block;

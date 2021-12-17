@@ -1,5 +1,6 @@
 *,body{
-    background: #efefef;
+    background: #512552;
+    color:whitesmoke;
 }
 
 .hidden {
@@ -9,11 +10,12 @@
 a{
     text-decoration: none;
     font-size: x-large;
-    color: black;
+    color:whitesmoke;
     padding: 0px 12px;
 }
 a:hover{
     text-decoration: none;
+    color:rgb(182, 182, 182);
 }
 
 .video-container {
